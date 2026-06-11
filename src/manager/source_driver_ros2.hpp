@@ -39,6 +39,7 @@
 #include <hesai_ros_driver/msg/ptp.hpp>
 #include <hesai_ros_driver/msg/firetime.hpp>
 #include <hesai_ros_driver/msg/loss_packet.hpp>
+#include <hesai_ros_driver/msg/heartbeat.hpp>
 
 #include <fstream>
 #include <memory>
@@ -115,6 +116,7 @@ protected:
   rclcpp::Publisher<hesai_ros_driver::msg::Ptp>::SharedPtr ptp_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<hesai_ros_driver::msg::UdpPacket>::SharedPtr every_pkt_pub_;
+  rclcpp::Publisher<hesai_ros_driver::msg::Heartbeat>::SharedPtr heartbeat_pub_;
 
   //spin thread while Receive data from ROS topic
   boost::thread* subscription_spin_thread_;
@@ -129,6 +131,8 @@ inline void SourceDriver::Init(const YAML::Node& config)
   node_ptr_.reset(new rclcpp::Node("hesai_ros_driver_node"));
   if (driver_param.input_param.send_point_cloud_ros) {
     pub_ = node_ptr_->create_publisher<sensor_msgs::msg::PointCloud2>(driver_param.input_param.ros_send_point_topic, 10);
+    heartbeat_pub_ = node_ptr_->create_publisher<hesai_ros_driver::msg::Heartbeat>(
+      driver_param.input_param.ros_send_point_topic + "_heartbeat", 10);
   }
   if (driver_param.input_param.send_imu_ros) {
     int imu_queue_size = 20;
@@ -228,6 +232,12 @@ inline void SourceDriver::SendPacket(const UdpFrame_t& msg, double timestamp)
 inline void SourceDriver::SendPointCloud(const LidarDecodedFrame<LidarPointXYZIRT>& msg)
 {
   pub_->publish(ToRosMsg(msg, frame_id_));
+  hesai_ros_driver::msg::Heartbeat beat;
+  beat.beat_count = (msg.fParam.IsMultiFrameFrequency() == 0) ? msg.frame_index : msg.multi_frame_index;
+  beat.node_ns = node_ptr_->get_namespace();
+  beat.node_name = node_ptr_->get_name();
+  beat.full_name = node_ptr_->get_fully_qualified_name();
+  heartbeat_pub_->publish(beat);
 }
 
 inline void SourceDriver::SendCorrection(const u8Array_t& msg)
